@@ -12,13 +12,14 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 import java.io.File;
@@ -50,7 +51,7 @@ public class VehicleMasterService {
         vehicle.setYear(decoded.year());
         vehicle.setPlant(decoded.plant());
         vehicle.setMonth(decoded.month());
-
+   
         return repository.save(vehicle);
     }
 
@@ -60,7 +61,8 @@ public class VehicleMasterService {
             String plant,
             String year,
             String month,
-            int page
+            int page,
+            boolean fetchDropdownData 
     ) {
 
         Pageable pageable = PageRequest.of(page, 50);
@@ -96,16 +98,28 @@ public class VehicleMasterService {
         }
 
         if (year != null && !year.isBlank()) {
-            hasFilter = true;
-            spec = spec.and((root, query, cb) ->
-                    cb.equal(root.get("year"), year));
-        }
+    hasFilter = true;
 
-        if (month != null && !month.isBlank()) {
-            hasFilter = true;
-            spec = spec.and((root, query, cb) ->
-                    cb.equal(root.get("month"), month));
+    spec = spec.and((root, query, cb) -> {
+        query.distinct(true); // 🔥 IMPORTANT for dropdown logic support
+        return cb.equal(root.get("year"), year);
+    });
+}
+
+       if (month != null && !month.isBlank()) {
+    hasFilter = true;
+
+    spec = spec.and((root, query, cb) -> {
+        // If year selected, month becomes dependent automatically
+        if (year != null && !year.isBlank()) {
+            return cb.and(
+                    cb.equal(root.get("year"), year),
+                    cb.equal(root.get("month"), month)
+            );
         }
+        return cb.equal(root.get("month"), month);
+    });
+}
 
         // ✅ IMPORTANT: prevent "return all data"
         if (!hasFilter) {
@@ -126,6 +140,7 @@ public class VehicleMasterService {
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
 
             Sheet sheet = workbook.getSheetAt(0);
+            DataFormatter formatter = new DataFormatter();
 
             List<VehicleMaster> toSave = new ArrayList<>();
             int savedCount = 0;
@@ -153,11 +168,8 @@ public class VehicleMasterService {
 
                 if (vehicleCell == null || chassisCell == null) continue;
 
-                vehicleCell.setCellType(CellType.STRING);
-                chassisCell.setCellType(CellType.STRING);
-
-                String vehicleNo = vehicleCell.getStringCellValue().trim();
-                String chassisNumber = chassisCell.getStringCellValue().trim();
+                String vehicleNo = formatter.formatCellValue(vehicleCell).trim();
+                String chassisNumber = formatter.formatCellValue(chassisCell).trim();
 
                 if (vehicleNo.isEmpty() || chassisNumber.isEmpty()) continue;
 
@@ -309,45 +321,62 @@ public class VehicleMasterService {
         Set<String> fileVehicleNos = new HashSet<>();
         Set<String> fileChassisNos = new HashSet<>();
 
-        for (String line : lines) {
-
-            if (line == null || line.isBlank()) continue;
+        
 
             // ⚠️ ASSUMPTION: format = vehicleNo,chassisNumber
-            String[] parts = line.split(",");
+           Pattern pattern = Pattern.compile(
+        "([A-Z]{2}\\d{2}[A-Z]{2}\\d{4})\\s+(MAT[A-Z0-9]+)"
+);
 
-            if (parts.length < 2) continue;
+for (String line : lines) {
 
-            String vehicleNo = parts[0].trim();
-            String chassisNumber = parts[1].trim();
+    if (line == null || line.isBlank()) {
+        continue;
+    }
 
-            if (vehicleNo.isEmpty() || chassisNumber.isEmpty()) continue;
+    System.out.println("LINE => [" + line + "]");
 
-            if (existingVehicleNos.contains(vehicleNo) ||
-                    existingChassisNos.contains(chassisNumber)) {
-                continue;
-            }
+    Matcher matcher = pattern.matcher(line.trim());
 
-            if (fileVehicleNos.contains(vehicleNo) ||
-                    fileChassisNos.contains(chassisNumber)) {
-                continue;
-            }
+    if (!matcher.find()) {
+        continue;
+    }
 
-            fileVehicleNos.add(vehicleNo);
-            fileChassisNos.add(chassisNumber);
+    String vehicleNo = matcher.group(1);
+    String chassisNumber = matcher.group(2);
 
-            DecodedChassis decoded = ChassisUtil.decode(chassisNumber);
+    System.out.println(
+            "MATCHED => " +
+            vehicleNo + " | " +
+            chassisNumber
+    );
 
-            VehicleMaster v = new VehicleMaster();
-            v.setVehicleNo(vehicleNo);
-            v.setChassisNumber(chassisNumber);
-            v.setChassisType(decoded.chassisType());
-            v.setYear(decoded.year());
-            v.setPlant(decoded.plant());
-            v.setMonth(decoded.month());
+    if (existingVehicleNos.contains(vehicleNo)
+            || existingChassisNos.contains(chassisNumber)) {
+        continue;
+    }
 
-            toSave.add(v);
-        }
+    if (fileVehicleNos.contains(vehicleNo)
+            || fileChassisNos.contains(chassisNumber)) {
+        continue;
+    }
+
+    fileVehicleNos.add(vehicleNo);
+    fileChassisNos.add(chassisNumber);
+
+    DecodedChassis decoded = ChassisUtil.decode(chassisNumber);
+
+    VehicleMaster v = new VehicleMaster();
+    v.setVehicleNo(vehicleNo);
+    v.setChassisNumber(chassisNumber);
+    v.setChassisType(decoded.chassisType());
+    v.setYear(decoded.year());
+    v.setPlant(decoded.plant());
+    v.setMonth(decoded.month());
+
+    toSave.add(v);
+}
+
 
         if (!toSave.isEmpty()) {
             repository.saveAll(toSave);
@@ -360,4 +389,74 @@ public class VehicleMasterService {
     public Page<VehicleMaster> getAllPaginated(Pageable pageable) {
         return repository.findAll(pageable);
     }
+
+    
+  public VehicleMaster getById(Long id) {
+
+    return repository.findById(id)
+            .orElseThrow(() ->
+                    new RuntimeException("Vehicle not found"));
+}
+
+public VehicleMaster updateVehicle(
+        Long id,
+        VehicleRequest request
+) {
+
+    VehicleMaster vehicle =
+            repository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Vehicle not found"));
+
+    if (request.vehicleNo() == null ||
+            request.vehicleNo().isBlank()) {
+        throw new RuntimeException("Vehicle Number is required");
+    }
+
+    if (request.chassisNumber() == null ||
+            request.chassisNumber().isBlank()) {
+        throw new RuntimeException("Chassis Number is required");
+    }
+
+    if (repository.existsByVehicleNoAndIdNot(
+            request.vehicleNo(),
+            id)) {
+
+        throw new RuntimeException(
+                "Vehicle number already exists"
+        );
+    }
+
+    if (repository.existsByChassisNumberAndIdNot(
+            request.chassisNumber(),
+            id)) {
+
+        throw new RuntimeException(
+                "Chassis number already exists"
+        );
+    }
+
+    DecodedChassis decoded =
+            ChassisUtil.decode(request.chassisNumber());
+
+    vehicle.setVehicleNo(request.vehicleNo());
+    vehicle.setChassisNumber(request.chassisNumber());
+
+    vehicle.setChassisType(decoded.chassisType());
+    vehicle.setYear(decoded.year());
+    vehicle.setPlant(decoded.plant());
+    vehicle.setMonth(decoded.month());
+
+    return repository.save(vehicle);
+}
+
+public void deleteVehicle(Long id) {
+
+    VehicleMaster vehicle =
+            repository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Vehicle not found"));
+
+    repository.delete(vehicle);
+}
 }

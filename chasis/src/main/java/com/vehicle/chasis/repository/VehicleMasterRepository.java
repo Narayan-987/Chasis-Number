@@ -11,4 +11,14 @@ public interface VehicleMasterRepository
     boolean existsByVehicleNo(String vehicleNo);
 
     boolean existsByChassisNumber(String chassisNumber);
+
+      boolean existsByVehicleNoAndIdNot(
+            String vehicleNo,
+            Long id
+    );
+
+    boolean existsByChassisNumberAndIdNot(
+            String chassisNumber,
+            Long id
+    );
 }

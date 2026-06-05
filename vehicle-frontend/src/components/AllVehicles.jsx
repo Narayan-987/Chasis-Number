@@ -9,18 +9,26 @@ export default function AllVehicles() {
 
   const size = 50;
 
-  const loadData = async (pageNo = 0) => {
-    try {
-      const res = await getAllVehicles(pageNo, size);
+ const loadData = async (pageNo = 0) => {
+  try {
+    const res = await getAllVehicles(pageNo, size);
 
-      setData(res.data.content);
-      setTotalPages(res.data.totalPages);
-      setPage(res.data.number);
+    console.log("API RESPONSE =", res.data);
 
-    } catch (err) {
-      console.log(err);
+    if (Array.isArray(res.data)) {
+      setData(res.data);
+      setTotalPages(1);
+      setPage(0);
+    } else {
+      setData(res.data.content || []);
+      setTotalPages(res.data.totalPages || 1);
+      setPage(res.data.number || 0);
     }
-  };
+
+  } catch (err) {
+    console.log("ERROR =", err);
+  }
+};
 
   useEffect(() => {
     loadData(0);

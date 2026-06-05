@@ -12,32 +12,34 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/api/master")
 @RequiredArgsConstructor
-@CrossOrigin("*")
+@CrossOrigin(origins = { "http://localhost:5173","http://localhost:5174", "http://localhost:3000"})
 public class VehicleMasterController {
 
     private final VehicleMasterService service;
 
-    // ✅ Save single record
+    // ✅ Save single record (ADMIN only)
     @PostMapping
     public VehicleMaster save(@Valid @RequestBody VehicleRequest request) {
         return service.save(request);
     }
 
-    // ✅ Upload Excel file
+    // ✅ Upload Excel file (ADMIN only)
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam("uploadType") String uploadType
     ) {
-
+  System.out.println("Received file: " + file.getOriginalFilename() + ", uploadType: " + uploadType);
         return ResponseEntity.ok(
                 service.uploadFile(file, uploadType)
         );
     }
-    // ✅ Search API
+
+    // ✅ Search API (USER & ADMIN)
     @GetMapping("/search")
     public Page<VehicleMaster> search(
             @RequestParam(required = false) String vehicleNo,
@@ -53,18 +55,53 @@ public class VehicleMasterController {
                 plant,
                 year,
                 month,
-                page
+                page,
+                false // fetchDropdownData = false for search
+                
         );
     }
 
-    // ✅ NEW: View full database
-    @GetMapping("/all")
-    public List<VehicleMaster> getAll() {
-        return service.getAllVehicles();
-    }
+    // ✅ View full database (USER & ADMIN)
+   @GetMapping("/all")
+   public List<VehicleMaster> getAll() {
+       return service.getAllVehicles();
+   }
 
     @GetMapping("/all-paginated")
     public Page<VehicleMaster> getAllPaginated(Pageable pageable) {
         return service.getAllPaginated(pageable);
     }
+
+    @GetMapping("/{id}")
+public VehicleMaster getById(
+        @PathVariable Long id
+) {
+    return service.getById(id);
 }
+
+@PutMapping("/{id}")
+public VehicleMaster updateVehicle(
+        @PathVariable Long id,
+        @Valid @RequestBody VehicleRequest request
+) {
+    return service.updateVehicle(id, request);
+}
+
+@DeleteMapping("/{id}")
+public ResponseEntity<?> deleteVehicle(
+        @PathVariable Long id
+) {
+
+    service.deleteVehicle(id);
+
+    return ResponseEntity.ok(
+            new DeleteResponse(
+                    "Vehicle deleted successfully"
+            )
+    );
+}
+
+public record DeleteResponse(String message) {}
+}
+    // ✅ DELETE endpoint (ADMIN only)
+   
