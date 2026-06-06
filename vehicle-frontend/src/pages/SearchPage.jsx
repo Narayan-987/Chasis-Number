@@ -6,6 +6,7 @@ import VehicleTable from "../components/VehicleTable";
 export default function SearchPage() {
   const navigate = useNavigate();
   const [results, setResults] = useState([]);
+  const [searchFilters, setSearchFilters] = useState({});
 
   return (
     <div style={{ padding: "24px", maxWidth: "1080px", margin: "0 auto" }}>
@@ -40,7 +41,10 @@ export default function SearchPage() {
         </button>
       </div>
 
-      <SearchPanel onSearch={setResults} />
+      <SearchPanel
+        setResults={setResults}
+        setSearchFilters={setSearchFilters}
+      />
       <div style={{ marginTop: "32px" }}>
         <VehicleTable
           data={results}

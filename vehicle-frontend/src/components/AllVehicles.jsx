@@ -7,7 +7,7 @@ export default function AllVehicles() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  const size = 50;
+  const size = 10;
 
  const loadData = async (pageNo = 0) => {
   try {

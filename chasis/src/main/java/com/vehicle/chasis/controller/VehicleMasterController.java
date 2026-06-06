@@ -3,6 +3,8 @@ package com.vehicle.chasis.controller;
 import com.vehicle.chasis.dto.VehicleRequest;
 import com.vehicle.chasis.entity.VehicleMaster;
 import com.vehicle.chasis.service.VehicleMasterService;
+
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -102,6 +104,47 @@ public ResponseEntity<?> deleteVehicle(
 }
 
 public record DeleteResponse(String message) {}
+
+//for downloading excel,pdf and image
+@GetMapping("/export")
+public void exportData(
+        @RequestParam String type,
+        @RequestParam(required = false) String vehicleNo,
+        @RequestParam(required = false) String chassisNumber,
+        @RequestParam(required = false) String plant,
+        @RequestParam(required = false) String year,
+        @RequestParam(required = false) String month,
+        HttpServletResponse response
+) throws Exception {
+
+    List<VehicleMaster> data =
+            service.getExportData(
+                    vehicleNo,
+                    chassisNumber,
+                    plant,
+                    year,
+                    month
+            );
+
+    switch (type.toLowerCase()) {
+
+        case "excel":
+            service.exportExcel(data, response);
+            break;
+
+        case "pdf":
+            service.exportPdf(data, response);
+            break;
+
+        case "image":
+            service.exportImage(data, response);
+            break;
+
+        default:
+            throw new RuntimeException("Invalid export type: " + type);
+    }
 }
-    // ✅ DELETE endpoint (ADMIN only)
+
+}
+    
    

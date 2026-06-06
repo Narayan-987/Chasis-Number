@@ -24,13 +24,15 @@ function App() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/login" element={<LoginPage />} />
 
-         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-<Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
-<Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-<Route path="/add" element={<ProtectedRoute requiredRole="ADMIN"><AddVehiclePage /></ProtectedRoute>} />
-<Route path="/edit/:id" element={<ProtectedRoute requiredRole="ADMIN"><EditVehicle /></ProtectedRoute>} />
-<Route path="/admin" element={<ProtectedRoute requiredRole="ADMIN"><AdminPage /></ProtectedRoute>} />
-<Route path="/vehicles" element={<AllVehiclesPage />} />
+          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+          <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+          <Route path="/add" element={<ProtectedRoute requiredRole="ADMIN"><AddVehiclePage /></ProtectedRoute>} />
+          <Route path="/add-vehicle" element={<ProtectedRoute requiredRole="ADMIN"><AddVehiclePage /></ProtectedRoute>} />
+          <Route path="/edit/:id" element={<ProtectedRoute requiredRole="ADMIN"><EditVehicle /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute requiredRole="ADMIN"><AdminPage /></ProtectedRoute>} />
+          <Route path="/vehicles" element={<ProtectedRoute><AllVehiclesPage /></ProtectedRoute>} />
           {/* fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
 

@@ -5,6 +5,8 @@ import com.vehicle.chasis.dto.VehicleRequest;
 import com.vehicle.chasis.entity.VehicleMaster;
 import com.vehicle.chasis.repository.VehicleMasterRepository;
 import com.vehicle.chasis.util.ChassisUtil;
+
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import net.sourceforge.tess4j.Tesseract;
 import org.apache.pdfbox.Loader;
@@ -12,24 +14,42 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Value;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.imageio.ImageIO;
 
 import java.io.File;
 import java.util.*;
+
+
+
+import java.util.List;
+
+
+// IMAGE EXPORT
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+
 
 @Service
 @RequiredArgsConstructor
 public class VehicleMasterService {
 
     private final VehicleMasterRepository repository;
+
+   @Value("${ocr.tessdata.path}")
+private String tessdataPath;
 
     // ✅ Save single vehicle
     public VehicleMaster save(VehicleRequest request) {
@@ -265,44 +285,42 @@ public class VehicleMasterService {
         }
     }
 
-    private String uploadImage(
-            MultipartFile file
-    ) {
+  private String uploadImage(MultipartFile file) {
 
-        try {
+    try {
+        System.out.println("IMAGE UPLOAD STARTED");
 
-            Tesseract tesseract =
-                    new Tesseract();
+        // ✅ Load tessdata from classpath
+        File tessdataDir = new ClassPathResource("tessdata").getFile();
 
-            tesseract.setDatapath(
-                    "C:/tessdata"
-            );
-
-            File temp =
-                    File.createTempFile(
-                            "ocr",
-                            ".png"
-                    );
-
-            file.transferTo(temp);
-
-            String text =
-                    tesseract.doOCR(temp);
-
-            String[] lines =
-                    text.split("\\r?\\n");
-
-            return saveExtractedData(lines);
-
+        if (!tessdataDir.exists()) {
+            throw new RuntimeException("Tessdata folder not found in resources");
         }
-        catch (Exception e) {
 
-            throw new RuntimeException(
-                    "Image upload failed : "
-                            + e.getMessage()
-            );
-        }
+        Tesseract tesseract = new Tesseract();
+
+        tesseract.setDatapath(tessdataPath);
+        // IMPORTANT: parent folder
+         tesseract.setDatapath(tessdataDir.getAbsolutePath());
+
+        tesseract.setLanguage("eng");
+
+        File temp = File.createTempFile("ocr", ".png");
+        file.transferTo(temp);
+
+        String text = tesseract.doOCR(temp);
+
+        System.out.println(text);
+
+        String[] lines = text.split("\\r?\\n");
+        return saveExtractedData(lines);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        throw new RuntimeException("Image upload failed: " + e.getMessage());
     }
+  }
+
 
     private String saveExtractedData(String[] lines) {
 
@@ -323,59 +341,65 @@ public class VehicleMasterService {
 
         
 
-            // ⚠️ ASSUMPTION: format = vehicleNo,chassisNumber
-           Pattern pattern = Pattern.compile(
-        "([A-Z]{2}\\d{2}[A-Z]{2}\\d{4})\\s+(MAT[A-Z0-9]+)"
-);
+        // ⚠️ ASSUMPTION: format = vehicleNo chassisNumber
+        Pattern pattern = Pattern.compile(
+                "([A-Z]{2}\\d{2}[A-Z]{2}\\d{4})\\s+(MAT[A-Z0-9]+)"
+        );
 
-for (String line : lines) {
+        for (String line : lines) {
 
-    if (line == null || line.isBlank()) {
-        continue;
-    }
+            if (line == null || line.isBlank()) {
+                continue;
+            }
 
-    System.out.println("LINE => [" + line + "]");
+            String cleanedLine = line.trim();
+            String normalizedLine = cleanedLine.toUpperCase()
+                    .replaceAll("[^A-Z0-9\\s]", " ")
+                    .replaceAll("\\s+", " ");
 
-    Matcher matcher = pattern.matcher(line.trim());
+            System.out.println("LINE => [" + cleanedLine + "]");
+            System.out.println("NORMALIZED => [" + normalizedLine + "]");
 
-    if (!matcher.find()) {
-        continue;
-    }
+            Matcher matcher = pattern.matcher(normalizedLine);
 
-    String vehicleNo = matcher.group(1);
-    String chassisNumber = matcher.group(2);
+            if (!matcher.find()) {
+                continue;
+            }
 
-    System.out.println(
-            "MATCHED => " +
-            vehicleNo + " | " +
-            chassisNumber
-    );
+            String vehicleNo = matcher.group(1);
+            String chassisNumber = matcher.group(2);
 
-    if (existingVehicleNos.contains(vehicleNo)
-            || existingChassisNos.contains(chassisNumber)) {
-        continue;
-    }
+            System.out.println(
+                    "MATCHED => " +
+                            vehicleNo + " | " +
+                            chassisNumber
+            );
 
-    if (fileVehicleNos.contains(vehicleNo)
-            || fileChassisNos.contains(chassisNumber)) {
-        continue;
-    }
+            if (existingVehicleNos.contains(vehicleNo)
+                    || existingChassisNos.contains(chassisNumber)) {
+                continue;
+            }
 
-    fileVehicleNos.add(vehicleNo);
-    fileChassisNos.add(chassisNumber);
+            if (fileVehicleNos.contains(vehicleNo)
+                    || fileChassisNos.contains(chassisNumber)) {
+                continue;
+            }
 
-    DecodedChassis decoded = ChassisUtil.decode(chassisNumber);
+            fileVehicleNos.add(vehicleNo);
+            fileChassisNos.add(chassisNumber);
 
-    VehicleMaster v = new VehicleMaster();
-    v.setVehicleNo(vehicleNo);
-    v.setChassisNumber(chassisNumber);
-    v.setChassisType(decoded.chassisType());
-    v.setYear(decoded.year());
-    v.setPlant(decoded.plant());
-    v.setMonth(decoded.month());
+            DecodedChassis decoded = ChassisUtil.decode(chassisNumber);
 
-    toSave.add(v);
-}
+            VehicleMaster v = new VehicleMaster();
+            v.setVehicleNo(vehicleNo);
+            v.setChassisNumber(chassisNumber);
+            v.setChassisType(decoded.chassisType());
+            v.setYear(decoded.year());
+            v.setPlant(decoded.plant());
+            v.setMonth(decoded.month());
+
+            toSave.add(v);
+        }
 
 
         if (!toSave.isEmpty()) {
@@ -458,5 +482,153 @@ public void deleteVehicle(Long id) {
                             new RuntimeException("Vehicle not found"));
 
     repository.delete(vehicle);
+}
+
+// ========================= EXPORT LOGIC =========================
+public List<VehicleMaster> getExportData(
+        String vehicleNo,
+        String chassisNumber,
+        String plant,
+        String year,
+        String month
+) {
+    Specification<VehicleMaster> spec =
+            (root, query, cb) -> cb.conjunction();
+
+    if (vehicleNo != null && !vehicleNo.isBlank()) {
+        spec = spec.and((root, query, cb) ->
+                cb.like(cb.upper(root.get("vehicleNo")),
+                        "%" + vehicleNo.toUpperCase() + "%"));
+    }
+
+    if (chassisNumber != null && !chassisNumber.isBlank()) {
+        spec = spec.and((root, query, cb) ->
+                cb.like(cb.upper(root.get("chassisNumber")),
+                        "%" + chassisNumber.toUpperCase() + "%"));
+    }
+
+    if (plant != null && !plant.isBlank()) {
+        spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("plant"), plant));
+    }
+
+    if (year != null && !year.isBlank()) {
+        spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("year"), year));
+    }
+
+    if (month != null && !month.isBlank()) {
+        spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("month"), month));
+    }
+
+    return repository.findAll(spec);
+}
+
+//for exporting excel
+public void exportExcel(List<VehicleMaster> data,
+                         HttpServletResponse response) throws Exception {
+    Workbook workbook = new XSSFWorkbook();
+    Sheet sheet = workbook.createSheet("Vehicles");
+
+    Row header = sheet.createRow(0);
+    header.createCell(0).setCellValue("Vehicle No");
+    header.createCell(1).setCellValue("Chassis No");
+    header.createCell(2).setCellValue("Plant");
+    header.createCell(3).setCellValue("Year");
+    header.createCell(4).setCellValue("Month");
+
+    int rowNum = 1;
+
+    for (VehicleMaster v : data) {
+        Row row = sheet.createRow(rowNum++);
+        row.createCell(0).setCellValue(v.getVehicleNo());
+        row.createCell(1).setCellValue(v.getChassisNumber());
+        row.createCell(2).setCellValue(v.getPlant());
+        row.createCell(3).setCellValue(v.getYear());
+        row.createCell(4).setCellValue(v.getMonth());
+    }
+
+    response.setContentType(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    response.setHeader(
+            "Content-Disposition",
+            "attachment; filename=vehicles.xlsx"
+    );
+
+    workbook.write(response.getOutputStream());
+    workbook.close();
+}
+
+//for exporting pdf
+public void exportPdf(List<VehicleMaster> data,
+                      HttpServletResponse response) throws Exception {
+
+    response.setContentType("application/pdf");
+    response.setHeader("Content-Disposition", "attachment; filename=vehicles.pdf");
+
+    com.itextpdf.text.Document document =
+            new com.itextpdf.text.Document();
+
+    com.itextpdf.text.pdf.PdfWriter.getInstance(
+            document,
+            response.getOutputStream()
+    );
+
+    document.open();
+
+    document.add(new com.itextpdf.text.Paragraph("Vehicle Report\n\n"));
+
+    for (VehicleMaster v : data) {
+        document.add(new com.itextpdf.text.Paragraph(
+                v.getVehicleNo() + " | " +
+                v.getChassisNumber() + " | " +
+                v.getPlant() + " | " +
+                v.getYear() + " | " +
+                v.getMonth()
+        ));
+    }
+
+    document.close();
+}
+
+//for exporting image
+public void exportImage(List<VehicleMaster> data,
+                        HttpServletResponse response) throws Exception {
+
+    BufferedImage image = new BufferedImage(
+            900,
+            40 + (data.size() * 20),
+            BufferedImage.TYPE_INT_RGB
+    );
+
+    Graphics2D g = image.createGraphics();
+    g.setColor(Color.WHITE);
+    g.fillRect(0, 0, 900, image.getHeight());
+
+    g.setColor(Color.BLACK);
+
+    int y = 20;
+
+    for (VehicleMaster v : data) {
+        g.drawString(
+                v.getVehicleNo() + " | " +
+                v.getChassisNumber() + " | " +
+                v.getPlant() + " | " +
+                v.getYear() + " | " +
+                v.getMonth(),
+                20,
+                y
+        );
+        y += 20;
+    }
+
+    g.dispose();
+
+    response.setContentType("image/png");
+    response.setHeader("Content-Disposition", "attachment; filename=vehicles.png");
+
+    ImageIO.write(image, "png", response.getOutputStream());
 }
 }

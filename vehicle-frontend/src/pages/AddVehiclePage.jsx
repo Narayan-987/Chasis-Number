@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import VehicleForm from "../components/VehicleForm";
 
+
 export default function AddVehiclePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
